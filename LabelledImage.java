@@ -12,7 +12,7 @@ class LabelledImage{
     private final ImageParams params;
     public LabelledImage(String pathname) throws IOException {
         File file = new File(pathname);
-        System.out.println(pathname);
+        
         Iterator<ImageReader> imageReaders = ImageIO.getImageReaders(ImageIO.createImageInputStream(file));
         this.img = ImageIO.read(file);
         String path = file.getCanonicalPath();
@@ -30,10 +30,11 @@ class LabelledImage{
                 myMediumPixel.blue.set(myMediumPixel.blue.getValue() + (double)((rgb) & 0xff));
             }
         }
-        if (width*height == 0) {
+
+        double size = height*width;
+        if (size == 0) {
             throw new IllegalArgumentException("Picture size is 0 !");
         }
-        double size = height*width;
         myMediumPixel.red.set(myMediumPixel.red.getValue()/size);
         myMediumPixel.green.set(myMediumPixel.green.getValue()/size);
         myMediumPixel.blue.set(myMediumPixel.blue.getValue()/size);
