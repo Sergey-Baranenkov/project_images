@@ -12,7 +12,7 @@ class LabelledImage{
     private final ImageParams params;
     public LabelledImage(String pathname) throws IOException {
         File file = new File(pathname);
-        
+
         Iterator<ImageReader> imageReaders = ImageIO.getImageReaders(ImageIO.createImageInputStream(file));
         this.img = ImageIO.read(file);
         String path = file.getCanonicalPath();

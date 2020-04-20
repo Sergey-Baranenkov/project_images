@@ -7,14 +7,16 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Pair;
 import org.imgscalr.Scalr;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Comparator;
 
 public class Main extends Application {
 
@@ -119,25 +121,47 @@ public class Main extends Application {
             }
         });
 
-        Button show_best_match_btn = new Button("Best match");
+        Button show_best_match_btn = new Button("Show differences");
         show_best_match_btn.setPrefWidth(80);
         show_best_match_btn.setOnAction(event ->{
             LabelledImage to_match = table.getSelectionModel().getSelectedItem();
             if (to_match!= null){
-                ImageView imageview = new ImageView();
-                Pair<LabelledImage,Double> matched = get_best_match(to_match);
+                if (images_collection.size() == 1){
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Определить схожесть изображения с другими");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Должно быть хотя-бы 2 изображения");
+                    alert.showAndWait();
+                    return;
+                }
 
-                Image img = SwingFXUtils.toFXImage(matched.getKey().getImg(), null );
-                imageview.setImage(img);
                 Stage sub_window = new Stage();
-                Label img_path = new Label("Path: " + matched.getKey().getImageParams().path.getValue());
-                Label divergence_cf = new Label("Divergence_cf: " + matched.getValue());
+                HBox root = new HBox();
+                root.setSpacing(20);
 
-                sub_window.setScene(new Scene(new VBox(img_path,divergence_cf,imageview)));
+                ArrayList<Pair<LabelledImage,Double>> sorted_matched = get_best_match(to_match);
+                String css_image_block = "-fx-border-color: gray;\n" +
+                        "-fx-border-insets: 5;\n" +
+                        "-fx-border-width: 2;\n" +
+                        "-fx-border-style: dashed;\n";
+
+                for (Pair<LabelledImage,Double> match : sorted_matched){
+                    ImageView imageview = new ImageView(SwingFXUtils.toFXImage(match.getKey().getImg(), null ));
+                    imageview.setFitWidth(500);
+                    imageview.setFitHeight(500);
+                    Label img_path = new Label("Путь: " + match.getKey().getImageParams().path.getValue());
+
+                    Label divergence_cf = new Label("Коэффициент отдаленности: " + match.getValue());
+
+                    VBox image_block = new VBox(img_path,divergence_cf,imageview);
+                    image_block.setStyle(css_image_block);
+                    root.getChildren().add(image_block);
+                }
+                sub_window.setScene(new Scene(root));
                 sub_window.showAndWait();
             }else {
                 Alert alert = new Alert(Alert.AlertType.ERROR);
-                alert.setTitle("Найти максимально схожее изображение");
+                alert.setTitle("Определить схожесть изображения с другими");
                 alert.setHeaderText(null);
                 alert.setContentText("Выберите изображение для поиска!");
                 alert.showAndWait();
@@ -151,25 +175,23 @@ public class Main extends Application {
         stage.show();
     }
 
-    private Pair<LabelledImage, Double> get_best_match(LabelledImage img) {
-        //возвращает себя, если картинка единственная, иначе максимально близкую по расстоянию между пикселями 32x32 копий
+    private ArrayList<Pair<LabelledImage,Double>> get_best_match(LabelledImage img) {
+        //массив для хранения пар <ссылка на объект, кф.отдаленности>
+        ArrayList<Pair<LabelledImage,Double>> unsorted_pairs = new ArrayList<>();
 
         int resized_size = 32;
+
         BufferedImage comparable_img_resized = Scalr.resize(img.getImg(), Scalr.Mode.FIT_EXACT, resized_size);
         double [][] comparable_img_brightness = new double[resized_size][resized_size];
 
         for (int i = 0; i < resized_size; i++){
             for (int j = 0; j< resized_size; j++){
                 int rgb = comparable_img_resized.getRGB(i,j);
-                //formula that calculates brightness from red green blue values
-                double pix_brightness = 0.299 * (double) ((rgb >> 16) & 0xff) + 0.587 *  (double) ((rgb >>  8) & 0xff) + 0.114 * (double)((rgb ) & 0xff);
-                comparable_img_brightness[i][j] = pix_brightness;
+                comparable_img_brightness[i][j] = get_pix_brightness(rgb);
             }
         }
 
         double best_match_cf = Double.MAX_VALUE;
-
-        LabelledImage best_match = img;
 
         for (LabelledImage tmp_img: images_collection) {
             if (img == tmp_img) {
@@ -182,20 +204,19 @@ public class Main extends Application {
             for (int i = 0; i < resized_size; i++){
                 for (int j = 0; j< resized_size; j++){
                     int rgb = tmp_img_resized.getRGB(i,j);
-                    double pix_brightness = 0.299 * (double) ((rgb >> 16) & 0xff) + 0.587 *  (double) ((rgb >>  8) & 0xff) + 0.114 * (double)((rgb ) & 0xff);
-                    distance_cf += Math.sqrt(Math.abs(pix_brightness - comparable_img_brightness[i][j]));
+                    distance_cf += Math.sqrt(Math.abs(get_pix_brightness(rgb) - comparable_img_brightness[i][j]));
                 }
             }
 
             if (distance_cf < best_match_cf){
                 best_match_cf = distance_cf;
-                best_match = tmp_img;
             }
+
+            unsorted_pairs.add(new Pair<>(tmp_img, distance_cf));
         }
 
-        best_match_cf = (best_match_cf == Double.MAX_VALUE)? 0 : best_match_cf;
-
-        return new Pair<>(best_match, best_match_cf);
+        unsorted_pairs.sort(Comparator.comparingDouble(Pair::getValue));
+        return unsorted_pairs;
     }
 
     private boolean add_image_to_list(String pathname){
@@ -205,5 +226,9 @@ public class Main extends Application {
         }catch (Exception e){
             return false;
         }
+    }
+
+    private double get_pix_brightness(int rgb){
+        return 0.299 * (double) ((rgb >> 16) & 0xff) + 0.587 *  (double) ((rgb >>  8) & 0xff) + 0.114 * (double) ((rgb ) & 0xff);
     }
 }
